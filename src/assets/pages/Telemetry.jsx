@@ -1,0 +1,11 @@
+import { useCallback, useEffect, useState } from "react";
+import { ChevronLeft, ChevronRight } from "lucide-react";
+import { api } from "../../services/api";
+import { EmptyState, ErrorState, Loading } from "../../components/DataState";
+
+export default function Telemetry() {
+  const [page, setPage] = useState(0); const [data, setData] = useState(null); const [error, setError] = useState(null);
+  const load = useCallback(() => { setData(null); setError(null); api.telemetry(page, 20).then((result) => { setData(result); setError(null); }).catch(setError); }, [page]);
+  useEffect(() => { api.telemetry(page, 20).then((result) => { setData(result); setError(null); }).catch(setError); }, [page]);
+  return <div className="page-stack"><section className="welcome-row"><div><div className="eyebrow">TELEMETRY SERVICE</div><h2>Telemetry events</h2><p>Search results returned by the gateway. Browse pages of recent events.</p></div></section><section className="panel">{error ? <ErrorState error={error} onRetry={load} /> : !data ? <Loading label="Loading telemetry events" /> : data.content?.length ? <><div className="table-scroll"><table><thead><tr><th>ID</th><th>Service</th><th>Type</th><th>Severity</th><th>Message</th><th>Trace ID</th><th>Event time</th></tr></thead><tbody>{data.content.map((event) => <tr key={event.id}><td>{event.id}</td><td>{event.serviceName}</td><td>{event.eventType}</td><td><span className={`severity severity-${String(event.severity || "").toLowerCase()}`}>{event.severity}</span></td><td className="message-cell">{event.message}</td><td className="mono">{event.traceId || "—"}</td><td className="muted">{event.eventTimestamp ? new Date(event.eventTimestamp).toLocaleString() : "—"}</td></tr>)}</tbody></table></div><div className="pagination"><span>Page {data.number + 1} of {Math.max(data.totalPages || 1, 1)} · {data.totalElements ?? data.content.length} events</span><div><button className="icon-button" disabled={data.first} onClick={() => setPage((p) => Math.max(p - 1, 0))} aria-label="Previous page"><ChevronLeft size={17} /></button><button className="icon-button" disabled={data.last} onClick={() => setPage((p) => p + 1)} aria-label="Next page"><ChevronRight size={17} /></button></div></div></> : <EmptyState title="No telemetry events found" detail="The telemetry service returned an empty page." />}</section></div>;
+}

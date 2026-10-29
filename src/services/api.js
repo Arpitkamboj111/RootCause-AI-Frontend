@@ -1,0 +1,70 @@
+const API_BASE_URL = import.meta.env.VITE_API_BASE_URL || "http://localhost:8080";
+const TOKEN_KEY = "rootcause_access_token";
+const TOKEN_TYPE_KEY = "rootcause_token_type";
+
+export class ApiError extends Error {
+  constructor(message, status) {
+    super(message);
+    this.name = "ApiError";
+    this.status = status;
+  }
+}
+
+export const getToken = () => sessionStorage.getItem(TOKEN_KEY);
+export const clearToken = () => { sessionStorage.removeItem(TOKEN_KEY); sessionStorage.removeItem(TOKEN_TYPE_KEY); };
+
+async function request(path, { method = "GET", body, auth = true } = {}) {
+  const headers = { Accept: "application/json" };
+  if (body !== undefined) headers["Content-Type"] = "application/json";
+  const token = auth ? getToken() : null;
+  if (token) headers.Authorization = `${sessionStorage.getItem(TOKEN_TYPE_KEY) || "Bearer"} ${token}`;
+  let response;
+  try {
+    response = await fetch(`${API_BASE_URL}${path}`, {
+      method,
+      headers,
+      body: body === undefined ? undefined : JSON.stringify(body),
+    });
+  } catch {
+    throw new ApiError("Unable to reach the API gateway. Check that it is running at the configured address.");
+  }
+  const payload = await response.json().catch(() => null);
+  if (!response.ok) {
+    if (response.status === 401) {
+      clearToken();
+      window.dispatchEvent(new Event("rootcause-auth-expired"));
+    }
+    throw new ApiError(payload?.message || payload?.error || `Request failed (${response.status})`, response.status);
+  }
+  return payload;
+}
+
+const unwrap = (payload) => payload?.data ?? payload;
+const query = (params) => new URLSearchParams(Object.entries(params).filter(([, value]) => value !== undefined && value !== "")).toString();
+
+export const api = {
+  async login(username, password) {
+    const data = unwrap(await request("/api/v1/auth/login", { method: "POST", body: { username, password }, auth: false }));
+    if (!data?.accessToken) throw new ApiError("The login response did not include an access token.");
+    sessionStorage.setItem(TOKEN_KEY, data.accessToken);
+    sessionStorage.setItem(TOKEN_TYPE_KEY, data.tokenType || "Bearer");
+    return data;
+  },
+  async incidents(page = 0, size = 20) {
+    return request(`/api/v1/incidents?${query({ page, size, sort: "detectedAt,desc" })}`);
+  },
+  async incident(id) { return request(`/api/v1/incidents/id?${query({ id })}`); },
+  async incidentEvents(id) { return request(`/api/v1/incidents/id/events?${query({ id })}`); },
+  async telemetry(page = 0, size = 20) {
+    return unwrap(await request(`/api/v1/telemetry/searchEvents?${query({ page, size })}`));
+  },
+  async telemetryHealth() { return unwrap(await request("/api/v1/telemetry/health")); },
+  async analyze(input) {
+    return request("/api/v1/analysis", { method: "POST", body: input });
+  },
+  async analysis(id) { return unwrap(await request(`/api/v1/analysis/id?${query({ id })}`)); },
+};
+
+export function errorMessage(error) {
+  return error?.status === 401 ? "Your session has expired. Sign in again to continue." : error?.message || "Something went wrong while loading data.";
+}
