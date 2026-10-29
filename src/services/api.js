@@ -1,6 +1,7 @@
 const API_BASE_URL = import.meta.env.VITE_API_BASE_URL || "http://localhost:8080";
 const TOKEN_KEY = "rootcause_access_token";
 const TOKEN_TYPE_KEY = "rootcause_token_type";
+const USERNAME_KEY = "rootcause_username";
 
 export class ApiError extends Error {
   constructor(message, status) {
@@ -11,7 +12,12 @@ export class ApiError extends Error {
 }
 
 export const getToken = () => sessionStorage.getItem(TOKEN_KEY);
-export const clearToken = () => { sessionStorage.removeItem(TOKEN_KEY); sessionStorage.removeItem(TOKEN_TYPE_KEY); };
+export const getUsername = () => sessionStorage.getItem(USERNAME_KEY);
+export const clearToken = () => {
+  sessionStorage.removeItem(TOKEN_KEY);
+  sessionStorage.removeItem(TOKEN_TYPE_KEY);
+  sessionStorage.removeItem(USERNAME_KEY);
+};
 
 async function request(path, { method = "GET", body, auth = true } = {}) {
   const headers = { Accept: "application/json" };
@@ -48,6 +54,7 @@ export const api = {
     if (!data?.accessToken) throw new ApiError("The login response did not include an access token.");
     sessionStorage.setItem(TOKEN_KEY, data.accessToken);
     sessionStorage.setItem(TOKEN_TYPE_KEY, data.tokenType || "Bearer");
+    sessionStorage.setItem(USERNAME_KEY, username);
     return data;
   },
   async incidents(page = 0, size = 20) {

@@ -7,18 +7,22 @@ import IncidentDetails from "./assets/pages/IncidentDetails";
 import Telemetry from "./assets/pages/Telemetry";
 import Analysis from "./assets/pages/Analysis";
 import Login from "./assets/pages/Login";
-import { getToken } from "./services/api";
+import { getToken, getUsername } from "./services/api";
 
 function AppRoutes() {
   const [token, setToken] = useState(getToken());
+  const [username, setUsername] = useState(getUsername());
   useEffect(() => {
-    const expireSession = () => setToken(null);
+    const expireSession = () => {
+      setToken(null);
+      setUsername(null);
+    };
     window.addEventListener("rootcause-auth-expired", expireSession);
     return () => window.removeEventListener("rootcause-auth-expired", expireSession);
   }, []);
   return <Routes>
-    <Route path="/login" element={token ? <Navigate to="/" replace /> : <Login onLogin={() => setToken(getToken())} />} />
-    <Route element={token ? <DashboardLayout onLogout={() => setToken(null)} /> : <Navigate to="/login" replace />}>
+    <Route path="/login" element={token ? <Navigate to="/" replace /> : <Login onLogin={(name) => { setToken(getToken()); setUsername(name); }} />} />
+    <Route element={token ? <DashboardLayout username={username} onLogout={() => { setToken(null); setUsername(null); }} /> : <Navigate to="/login" replace />}>
       <Route path="/" element={<Dashboard />} />
       <Route path="/incidents" element={<Incidents />} />
       <Route path="/incidents/:id" element={<IncidentDetails />} />
