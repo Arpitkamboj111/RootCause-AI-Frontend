@@ -1,7 +1,6 @@
 const API_BASE_URL = import.meta.env.VITE_API_BASE_URL || "http://localhost:8080";
-const TOKEN_KEY = "rootcause_access_token";
-const TOKEN_TYPE_KEY = "rootcause_token_type";
 const USERNAME_KEY = "rootcause_username";
+let sessionCheckInFlight;
 
 export class ApiError extends Error {
   constructor(message, status) {
@@ -11,24 +10,18 @@ export class ApiError extends Error {
   }
 }
 
-export const getToken = () => sessionStorage.getItem(TOKEN_KEY);
 export const getUsername = () => sessionStorage.getItem(USERNAME_KEY);
-export const clearToken = () => {
-  sessionStorage.removeItem(TOKEN_KEY);
-  sessionStorage.removeItem(TOKEN_TYPE_KEY);
-  sessionStorage.removeItem(USERNAME_KEY);
-};
+export const clearUsername = () => sessionStorage.removeItem(USERNAME_KEY);
 
-async function request(path, { method = "GET", body, auth = true } = {}) {
+async function request(path, { method = "GET", body } = {}) {
   const headers = { Accept: "application/json" };
   if (body !== undefined) headers["Content-Type"] = "application/json";
-  const token = auth ? getToken() : null;
-  if (token) headers.Authorization = `${sessionStorage.getItem(TOKEN_TYPE_KEY) || "Bearer"} ${token}`;
   let response;
   try {
     response = await fetch(`${API_BASE_URL}${path}`, {
       method,
       headers,
+      credentials: "include",
       body: body === undefined ? undefined : JSON.stringify(body),
     });
   } catch {
@@ -37,7 +30,6 @@ async function request(path, { method = "GET", body, auth = true } = {}) {
   const payload = await response.json().catch(() => null);
   if (!response.ok) {
     if (response.status === 401) {
-      clearToken();
       window.dispatchEvent(new Event("rootcause-auth-expired"));
     }
     throw new ApiError(payload?.message || payload?.error || `Request failed (${response.status})`, response.status);
@@ -50,12 +42,16 @@ const query = (params) => new URLSearchParams(Object.entries(params).filter(([, 
 
 export const api = {
   async login(username, password) {
-    const data = unwrap(await request("/api/v1/auth/login", { method: "POST", body: { username, password }, auth: false }));
-    if (!data?.accessToken) throw new ApiError("The login response did not include an access token.");
-    sessionStorage.setItem(TOKEN_KEY, data.accessToken);
-    sessionStorage.setItem(TOKEN_TYPE_KEY, data.tokenType || "Bearer");
+    const data = unwrap(await request("/api/v1/auth/login", { method: "POST", body: { username, password } }));
     sessionStorage.setItem(USERNAME_KEY, username);
     return data;
+  },
+  async checkSession() {
+    if (!sessionCheckInFlight) {
+      sessionCheckInFlight = request(`/api/v1/telemetry/searchEvents?${query({ page: 0, size: 1 })}`)
+        .finally(() => { sessionCheckInFlight = null; });
+    }
+    return sessionCheckInFlight;
   },
   async incidents(page = 0, size = 20) {
     return request(`/api/v1/incidents?${query({ page, size, sort: "detectedAt,desc" })}`);
