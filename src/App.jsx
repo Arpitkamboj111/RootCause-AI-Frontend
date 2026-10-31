@@ -72,7 +72,7 @@ function AppRoutes() {
   };
   return <Routes>
     <Route path="/login" element={authState === "authenticated" ? <Navigate to="/" replace /> : <Login onLogin={finishLogin} />} />
-    <Route element={authState === "authenticated" ? <DashboardLayout username={username} /> : <Navigate to="/login" replace />}>
+    <Route element={authState === "authenticated" ? <DashboardLayout username={username} onLogout={() => { clearUsername(); setUsername(null); setAuthState("unauthenticated"); }} /> : <Navigate to="/login" replace />}>
       <Route path="/" element={<Dashboard />} />
       <Route path="/incidents" element={<Incidents />} />
       <Route path="/incidents/:id" element={<IncidentDetails />} />

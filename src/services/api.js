@@ -46,6 +46,9 @@ export const api = {
     sessionStorage.setItem(USERNAME_KEY, username);
     return data;
   },
+  async logout() {
+    return request("/api/v1/auth/logout", { method: "POST" });
+  },
   async checkSession() {
     if (!sessionCheckInFlight) {
       sessionCheckInFlight = request(`/api/v1/telemetry/searchEvents?${query({ page: 0, size: 1 })}`)
@@ -56,12 +59,34 @@ export const api = {
   async incidents(page = 0, size = 20) {
     return request(`/api/v1/incidents?${query({ page, size, sort: "detectedAt,desc" })}`);
   },
+  async allIncidents(size = 200) {
+    const firstPage = await this.incidents(0, size);
+    const pages = [firstPage];
+    for (let start = 1; start < (firstPage.totalPages || 1); start += 5) {
+      const pageNumbers = Array.from(
+        { length: Math.min(5, firstPage.totalPages - start) },
+        (_, index) => start + index,
+      );
+      pages.push(...await Promise.all(pageNumbers.map((page) => this.incidents(page, size))));
+    }
+    return {
+      ...firstPage,
+      content: pages.flatMap((page) => page.content || []),
+      totalElements: firstPage.totalElements ?? pages.reduce((sum, page) => sum + (page.content?.length || 0), 0),
+    };
+  },
   async incident(id) { return request(`/api/v1/incidents/id?${query({ id })}`); },
   async incidentEvents(id) { return request(`/api/v1/incidents/id/events?${query({ id })}`); },
+  async telemetryEvent(id) {
+    return unwrap(await request(`/api/v1/telemetry/events/id?${query({ id })}`));
+  },
   async telemetry(page = 0, size = 20) {
     return unwrap(await request(`/api/v1/telemetry/searchEvents?${query({ page, size })}`));
   },
   async telemetryHealth() { return unwrap(await request("/api/v1/telemetry/health")); },
+  async analyses(page = 0, size = 10, filters = {}) {
+    return unwrap(await request(`/api/v1/analysis?${query({ page, size, ...filters })}`));
+  },
   async analyze(input) {
     return request("/api/v1/analysis", { method: "POST", body: input });
   },

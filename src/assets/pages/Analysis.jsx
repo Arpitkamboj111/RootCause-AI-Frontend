@@ -1,12 +1,40 @@
-import { useState } from "react";
-import { useSearchParams } from "react-router-dom";
-import { LoaderCircle, Sparkles } from "lucide-react";
-import { api, errorMessage } from "../../services/api";
+import { useEffect, useState } from "react";
+import { ChevronLeft, ChevronRight, Sparkles } from "lucide-react";
+import { api } from "../../services/api";
+import { EmptyState, ErrorState, Loading } from "../../components/DataState";
+import AnalysisRecord from "../../components/AnalysisRecord";
 
 export default function Analysis() {
-  const [params] = useSearchParams(); const [form, setForm] = useState({ serviceName: params.get("serviceName") || "", errorMessage: "", stackTrace: "", severity: params.get("severity") || "", traceId: "" });
-  const [result, setResult] = useState(null); const [busy, setBusy] = useState(false); const [error, setError] = useState("");
-  const update = (event) => setForm((current) => ({ ...current, [event.target.name]: event.target.value }));
-  const submit = async (event) => { event.preventDefault(); setBusy(true); setError(""); setResult(null); try { setResult(await api.analyze(form)); } catch (err) { setError(errorMessage(err)); } finally { setBusy(false); } };
-  return <div className="page-stack"><section className="welcome-row"><div><div className="eyebrow">AI ANALYSIS SERVICE</div><h2>Root cause analysis</h2><p>Submit an observed error and service context for investigation.</p></div></section><div className="analysis-grid"><form className="panel analysis-form" onSubmit={submit}><div className="panel-heading"><div><h3>Analysis input</h3><p>Fields follow the backend AnalysisRequest contract</p></div></div><label>Service name<input name="serviceName" value={form.serviceName} onChange={update} required /></label><label>Error message<textarea name="errorMessage" rows="4" value={form.errorMessage} onChange={update} required /></label><label>Stack trace <span className="optional">Optional</span><textarea name="stackTrace" rows="5" value={form.stackTrace} onChange={update} /></label><div className="form-row"><label>Severity <span className="optional">Optional</span><input name="severity" value={form.severity} onChange={update} /></label><label>Trace ID <span className="optional">Optional</span><input name="traceId" value={form.traceId} onChange={update} /></label></div>{error && <div className="form-error" role="alert">{error}</div>}<button className="button button-primary" disabled={busy}>{busy ? <LoaderCircle className="spin" size={16} /> : <Sparkles size={16} />} {busy ? "Analyzing" : "Run analysis"}</button></form><section className="panel result-panel"><div className="panel-heading"><div><h3>Analysis result</h3><p>Response from the AI analysis service</p></div></div>{result ? <><div className="result-status">{result.status || "Analysis returned"}</div><dl className="result-list"><dt>Service</dt><dd>{result.serviceName || form.serviceName}</dd><dt>Probable root cause</dt><dd>{result.probableRootCause || "Not provided"}</dd><dt>Evidence</dt><dd>{result.evidence || "Not provided"}</dd><dt>Suggested fix</dt><dd>{result.suggestedFix || "Not provided"}</dd></dl>{result.message && <p className="result-message">{result.message}</p>}</> : <div className="result-placeholder"><span className="empty-icon"><Sparkles size={19} /></span><b>Analysis is ready when you are</b><p>Submit the observed error details to receive the backend analysis response.</p></div>}</section></div></div>;
+  const [page, setPage] = useState(0);
+  const [refreshKey, setRefreshKey] = useState(0);
+  const [data, setData] = useState(null);
+  const [error, setError] = useState(null);
+  useEffect(() => {
+    let active = true;
+    let inFlight = false;
+    const refresh = async () => {
+      if (inFlight || document.hidden) return;
+      inFlight = true;
+      try {
+        const result = await api.analyses(page, 10);
+        if (active) { setData(result); setError(null); }
+      } catch (requestError) {
+        if (active) setError(requestError);
+      } finally {
+        inFlight = false;
+      }
+    };
+    refresh();
+    const interval = window.setInterval(refresh, 30000);
+    return () => { active = false; window.clearInterval(interval); };
+  }, [page, refreshKey]);
+  const refreshResults = () => { setError(null); setRefreshKey((key) => key + 1); };
+
+  return <div className="page-stack">
+    <section className="welcome-row"><div><div className="eyebrow">AUTOMATED AI ANALYSIS</div><h2>Root cause analysis</h2><p>Analysis results created automatically when telemetry produces a new incident.</p><span className="refresh-note"><Sparkles size={12} /> Results refresh every 30 seconds</span></div><button className="button button-secondary" onClick={refreshResults}><Sparkles size={15} /> Refresh results</button></section>
+    {error ? <section className="panel"><ErrorState error={error} onRetry={refreshResults} /></section> : !data ? <Loading label="Loading AI analysis records" /> : data.content?.length ? <>
+      <div className="analysis-records">{data.content.map((item) => <AnalysisRecord key={item.id} analysis={item} />)}</div>
+      <div className="pagination"><span>Page {data.number + 1} of {Math.max(data.totalPages || 1, 1)} · {data.totalElements ?? data.content.length} analysis records</span><div><button className="icon-button" disabled={data.first} onClick={() => setPage((current) => Math.max(current - 1, 0))} aria-label="Previous page"><ChevronLeft size={17} /></button><button className="icon-button" disabled={data.last} onClick={() => setPage((current) => current + 1)} aria-label="Next page"><ChevronRight size={17} /></button></div></div>
+    </> : <section className="panel"><EmptyState title="No analysis records yet" detail="AI analysis records appear here after an incident triggers the backend analysis workflow." /></section>}
+  </div>;
 }
